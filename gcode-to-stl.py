@@ -89,7 +89,7 @@ def save_to_xyz_with_normals(points, normals, output_path):
         for point, normal in zip(points, normals):
             file.write(f"{point[0]} {point[1]} {point[2]} {normal[0]} {normal[1]} {normal[2]}\n")
             
-def point_cloud_to_voxels(points, voxel_size=0.2, grid_size=200):
+def point_cloud_to_voxels(points, voxel_size=0.1, grid_size=100):
     """
     Convert a point cloud to a voxel grid.
     """
