@@ -2,9 +2,6 @@ import math
 import numpy as np
 from skimage.measure import marching_cubes
 from stl import mesh
-import trimesh
-
-
 
 
 def interpolate_points(start, end, num_points):
