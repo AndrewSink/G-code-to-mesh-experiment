@@ -81,7 +81,7 @@
         </svg>
         <p class="text-sm text-gray-400 font-medium">Drop .gcode here</p>
         <p class="text-xs text-gray-600">or click to browse</p>
-        <p id="fileName" class="text-xs text-blue-400 hidden"></p>
+        <p id="fileName" class="text-xs text-blue-400 hidden w-full truncate text-center px-1" title=""></p>
       </div>
       <input id="fileInput" type="file" accept=".gcode" class="hidden" />
 
@@ -366,6 +366,7 @@
       }
       selectedFile = file;
       fileName.textContent = file.name;
+      fileName.title = file.name;
       fileName.classList.remove('hidden');
       processBtn.disabled = false;
       hideError();
