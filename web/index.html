@@ -117,7 +117,21 @@
         <label class="flex items-center gap-2 cursor-pointer">
           <input id="flipNormals" type="checkbox" checked
             class="w-3.5 h-3.5 accent-blue-500 cursor-pointer" />
-          <span class="text-xs text-gray-400">Flip normals</span>
+          <div class="relative group">
+            <span class="text-xs text-gray-400 cursor-help underline decoration-dashed decoration-gray-600 underline-offset-2">
+              Flip normals
+            </span>
+            <div class="absolute bottom-full left-0 mb-2 z-50 w-56
+                        bg-gray-800 border border-gray-700 rounded-lg px-3 py-2
+                        text-xs text-gray-300 leading-relaxed shadow-xl
+                        opacity-0 group-hover:opacity-100 transition-opacity duration-150
+                        pointer-events-none">
+              Marching Cubes normals point inward by default (into the solid).
+              Enable this to flip them outward, which is required for correct
+              lighting and STL export.
+              <br/><span class="text-gray-500 mt-1 block">Leave on unless your mesh looks inside-out.</span>
+            </div>
+          </div>
         </label>
 
         <label class="flex items-center gap-2 cursor-pointer">
