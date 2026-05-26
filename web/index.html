@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>G-code to Mesh</title>
+
+  <!-- Tailwind CSS (CDN, no build step) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            gray: {
+              950: '#0a0f1a',
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- three.js ES module imports via importmap -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+
+<body class="h-full bg-[#0a0f1a] text-gray-100 flex flex-col overflow-hidden">
+
+  <!-- ======================================================= Header -->
+  <header class="flex-none bg-gray-900 border-b border-gray-800 px-5 py-3 flex items-center gap-3">
+    <svg class="w-5 h-5 text-blue-400 flex-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+        d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 10V7"/>
+    </svg>
+    <h1 class="font-semibold text-sm tracking-wide">G-code to Mesh</h1>
+    <span class="text-xs text-gray-500 hidden sm:block">
+      Browser-based G-code to STL converter
+    </span>
+  </header>
+
+  <!-- ======================================================= Main -->
+  <main class="flex flex-1 overflow-hidden">
+
+    <!-- ================================================= Left panel -->
+    <aside id="panel"
+      class="w-64 flex-none bg-gray-900 border-r border-gray-800
+             flex flex-col gap-4 p-4 overflow-y-auto">
+
+      <!-- Drop zone -->
+      <div id="dropzone"
+        class="border-2 border-dashed border-gray-700 rounded-xl p-5
+               flex flex-col items-center gap-2 text-center cursor-pointer
+               hover:border-blue-500 hover:bg-blue-950/20
+               transition-colors select-none">
+        <svg class="w-8 h-8 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+            d="M9 17v-2m3 2v-4m3 4v-6M3 21h18M3 10l9-7 9 7"/>
+        </svg>
+        <p class="text-sm text-gray-400 font-medium">Drop .gcode here</p>
+        <p class="text-xs text-gray-600">or click to browse</p>
+        <p id="fileName" class="text-xs text-blue-400 hidden"></p>
+      </div>
+      <input id="fileInput" type="file" accept=".gcode" class="hidden" />
+
+      <!-- Settings -->
+      <div class="flex flex-col gap-3">
+        <p class="text-xs font-semibold uppercase tracking-widest text-gray-500">Settings</p>
+
+        <label class="flex items-center justify-between gap-2">
+          <span class="text-xs text-gray-400">Voxel padding</span>
+          <input id="voxelSize" type="number" value="0.1" step="0.05" min="0.01" max="1.0"
+            class="w-20 bg-gray-800 border border-gray-700 rounded px-2 py-1
+                   text-xs text-right text-gray-200 focus:outline-none focus:border-blue-500" />
+        </label>
+
+        <label class="flex items-center justify-between gap-2">
+          <span class="text-xs text-gray-400">Grid size</span>
+          <input id="gridSize" type="number" value="100" step="10" min="30" max="250"
+            class="w-20 bg-gray-800 border border-gray-700 rounded px-2 py-1
+                   text-xs text-right text-gray-200 focus:outline-none focus:border-blue-500" />
+        </label>
+
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input id="flipNormals" type="checkbox" checked
+            class="w-3.5 h-3.5 accent-blue-500 cursor-pointer" />
+          <span class="text-xs text-gray-400">Flip normals</span>
+        </label>
+
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input id="doubleSide" type="checkbox" checked
+            class="w-3.5 h-3.5 accent-blue-500 cursor-pointer" />
+          <span class="text-xs text-gray-400">Double-sided rendering</span>
+        </label>
+      </div>
+
+      <!-- Process button -->
+      <button id="processBtn" disabled
+        class="w-full rounded-lg py-2 text-sm font-semibold
+               bg-blue-600 hover:bg-blue-500 active:bg-blue-700
+               disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed
+               transition-colors">
+        Process
+      </button>
+
+      <!-- Progress -->
+      <div id="progressSection" class="hidden flex-col gap-2">
+        <div class="flex justify-between items-center">
+          <span id="progressLabel" class="text-xs text-gray-400 truncate">Waiting...</span>
+          <span id="progressPct" class="text-xs text-gray-500 flex-none ml-2">0%</span>
+        </div>
+        <div class="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+          <div id="progressBar"
+            class="h-full bg-blue-500 rounded-full transition-all duration-200 ease-out"
+            style="width:0%"></div>
+        </div>
+        <p id="progressDetail" class="text-xs text-gray-600 truncate"></p>
+      </div>
+
+      <!-- Stats -->
+      <div id="statsSection" class="hidden border border-gray-800 rounded-lg p-3 flex-col gap-1.5">
+        <p class="text-xs font-semibold uppercase tracking-widest text-gray-500 mb-0.5">Results</p>
+        <div class="flex justify-between text-xs">
+          <span class="text-gray-500">Points</span>
+          <span id="statPoints" class="text-gray-300 font-mono">-</span>
+        </div>
+        <div class="flex justify-between text-xs">
+          <span class="text-gray-500">Triangles</span>
+          <span id="statTris" class="text-gray-300 font-mono">-</span>
+        </div>
+        <div class="flex justify-between text-xs">
+          <span class="text-gray-500">Total time</span>
+          <span id="statTime" class="text-gray-300 font-mono">-</span>
+        </div>
+      </div>
+
+      <!-- Spacer -->
+      <div class="flex-1"></div>
+
+      <!-- Export button -->
+      <button id="exportBtn" disabled
+        class="w-full rounded-lg py-2 text-sm font-semibold
+               border border-gray-700 text-gray-400
+               hover:border-blue-400 hover:text-blue-400
+               disabled:opacity-30 disabled:cursor-not-allowed
+               transition-colors">
+        Export STL
+      </button>
+
+    </aside>
+
+    <!-- ================================================= Viewport -->
+    <section class="flex-1 relative overflow-hidden">
+      <canvas id="threeCanvas" class="w-full h-full block"></canvas>
+
+      <!-- Placeholder overlay, hidden when mesh loads -->
+      <div id="viewportHint"
+        class="absolute inset-0 flex flex-col items-center justify-center
+               text-gray-700 pointer-events-none gap-2">
+        <svg class="w-16 h-16 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
+            d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 10V7"/>
+        </svg>
+        <p class="text-sm">No mesh loaded</p>
+        <p class="text-xs text-gray-800">Drop a .gcode file and click Process</p>
+      </div>
+
+      <!-- Controls hint (shown when mesh is loaded) -->
+      <div id="controlsHint"
+        class="hidden absolute bottom-3 right-3 text-xs text-gray-700 text-right
+               pointer-events-none leading-relaxed">
+        Left drag: rotate &nbsp; Right drag / scroll: zoom &nbsp; Middle drag: pan
+      </div>
+
+      <!-- Error toast -->
+      <div id="errorToast"
+        class="hidden absolute top-4 left-1/2 -translate-x-1/2
+               bg-red-900/90 border border-red-700 text-red-200
+               text-xs rounded-lg px-4 py-2 max-w-sm text-center shadow-xl">
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ======================================================= Main script -->
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // -------------------------------------------------------- Three.js setup
+    const canvas = document.getElementById('threeCanvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0f1a);
+
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 10000);
+    camera.position.set(0, 50, 200);
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+
+    // Lighting
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    keyLight.position.set(1, 2, 2);
+    scene.add(keyLight);
+    const fillLight = new THREE.DirectionalLight(0x6699ff, 0.6);
+    fillLight.position.set(-2, -0.5, -1);
+    scene.add(fillLight);
+    const rimLight = new THREE.DirectionalLight(0xffeedd, 0.4);
+    rimLight.position.set(0, -2, 1);
+    scene.add(rimLight);
+
+    // Grid
+    const grid = new THREE.GridHelper(400, 40, 0x1a2035, 0x111827);
+    scene.add(grid);
+
+    // Animate
+    (function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    })();
+
+    // Resize handler
+    const ro = new ResizeObserver(() => {
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      if (w === 0 || h === 0) return;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    });
+    ro.observe(canvas);
+
+    // Fit camera to bounding box
+    function fitCamera(geometry) {
+      geometry.computeBoundingBox();
+      const box = geometry.boundingBox;
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const fov = camera.fov * (Math.PI / 180);
+      const dist = maxDim / (2 * Math.tan(fov / 2)) * 1.5;
+      controls.target.copy(center);
+      camera.position.copy(center);
+      camera.position.z += dist;
+      camera.position.y += maxDim * 0.3;
+      camera.near = maxDim * 0.0005;
+      camera.far  = maxDim * 50;
+      camera.updateProjectionMatrix();
+      controls.update();
+      grid.position.y = box.min.y;
+      grid.scale.setScalar(maxDim / 200);
+    }
+
+    // Current mesh ref (for disposal on re-run)
+    let currentMesh = null;
+    let currentStlBuffer = null;
+
+    // -------------------------------------------------------- UI refs
+    const dropzone    = document.getElementById('dropzone');
+    const fileInput   = document.getElementById('fileInput');
+    const fileName    = document.getElementById('fileName');
+    const processBtn  = document.getElementById('processBtn');
+    const exportBtn   = document.getElementById('exportBtn');
+    const voxelSizeEl = document.getElementById('voxelSize');
+    const gridSizeEl  = document.getElementById('gridSize');
+    const flipNormsEl = document.getElementById('flipNormals');
+    const doubleSideEl= document.getElementById('doubleSide');
+    const progressSec = document.getElementById('progressSection');
+    const progressBar = document.getElementById('progressBar');
+    const progressLbl = document.getElementById('progressLabel');
+    const progressPct = document.getElementById('progressPct');
+    const progressDet = document.getElementById('progressDetail');
+    const statsSec    = document.getElementById('statsSection');
+    const statPoints  = document.getElementById('statPoints');
+    const statTris    = document.getElementById('statTris');
+    const statTime    = document.getElementById('statTime');
+    const viewHint    = document.getElementById('viewportHint');
+    const ctrlHint    = document.getElementById('controlsHint');
+    const errorToast  = document.getElementById('errorToast');
+
+    // -------------------------------------------------------- File handling
+    let selectedFile = null;
+
+    function handleFile(file) {
+      if (!file || !file.name.toLowerCase().endsWith('.gcode')) {
+        showError('Please select a .gcode file.');
+        return;
+      }
+      selectedFile = file;
+      fileName.textContent = file.name;
+      fileName.classList.remove('hidden');
+      processBtn.disabled = false;
+      hideError();
+    }
+
+    dropzone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) handleFile(fileInput.files[0]);
+    });
+
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.classList.add('border-blue-500', 'bg-blue-950/20');
+    });
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.classList.remove('border-blue-500', 'bg-blue-950/20');
+    });
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('border-blue-500', 'bg-blue-950/20');
+      const file = e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    });
+
+    // -------------------------------------------------------- Worker
+    const worker = new Worker('./worker.js', { type: 'module' });
+
+    worker.onmessage = (e) => {
+      const { type } = e.data;
+
+      if (type === 'progress') {
+        const { stage, pct, detail } = e.data;
+        const stageLabel = { parsing: 'Parsing', voxelizing: 'Voxelizing', marching: 'Meshing' };
+        const stageBase  = { parsing: 0,         voxelizing: 33,            marching: 66 };
+        const overall = stageBase[stage] + pct / 3;
+        setProgress(stageLabel[stage] || stage, Math.round(overall), detail);
+        return;
+      }
+
+      if (type === 'result') {
+        const { vertsBuffer, facesBuffer, stlBuffer, stats } = e.data.payload;
+        currentStlBuffer = stlBuffer;
+        displayMesh(vertsBuffer, facesBuffer);
+        setProgress('Done', 100, '');
+        showStats(stats);
+        processBtn.disabled = false;
+        exportBtn.disabled = false;
+        return;
+      }
+
+      if (type === 'error') {
+        showError(e.data.message);
+        processBtn.disabled = false;
+        setProgress('Error', 0, '');
+        return;
+      }
+    };
+
+    worker.onerror = (e) => {
+      showError(`Worker error: ${e.message}`);
+      processBtn.disabled = false;
+    };
+
+    // -------------------------------------------------------- Process button
+    processBtn.addEventListener('click', () => {
+      if (!selectedFile) return;
+
+      processBtn.disabled = true;
+      exportBtn.disabled = true;
+      hideError();
+      progressSec.classList.remove('hidden');
+      progressSec.classList.add('flex');
+      statsSec.classList.remove('flex');
+      statsSec.classList.add('hidden');
+      setProgress('Reading file...', 0, '');
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const gcodeBuffer = ev.target.result;
+        worker.postMessage(
+          {
+            type: 'process',
+            payload: {
+              gcodeBuffer,
+              voxelSize:   parseFloat(voxelSizeEl.value)  || 0.1,
+              gridSize:    parseInt(gridSizeEl.value, 10)  || 100,
+              flipNormals: flipNormsEl.checked,
+            },
+          },
+          [gcodeBuffer]   // Transfer ownership (zero-copy)
+        );
+      };
+      reader.readAsArrayBuffer(selectedFile);
+    });
+
+    // -------------------------------------------------------- Display mesh
+    function displayMesh(vertsBuffer, facesBuffer) {
+      // Dispose old mesh
+      if (currentMesh) {
+        scene.remove(currentMesh);
+        currentMesh.geometry.dispose();
+        currentMesh.material.dispose();
+        currentMesh = null;
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(vertsBuffer, 3));
+      geometry.setIndex(new THREE.BufferAttribute(facesBuffer, 1));
+      geometry.computeVertexNormals();
+
+      const material = new THREE.MeshStandardMaterial({
+        color: 0x7090c0,
+        roughness: 0.55,
+        metalness: 0.05,
+        side: doubleSideEl.checked ? THREE.DoubleSide : THREE.FrontSide,
+      });
+
+      currentMesh = new THREE.Mesh(geometry, material);
+      scene.add(currentMesh);
+
+      fitCamera(geometry);
+
+      viewHint.classList.add('hidden');
+      ctrlHint.classList.remove('hidden');
+    }
+
+    // -------------------------------------------------------- Export button
+    exportBtn.addEventListener('click', () => {
+      if (!currentStlBuffer) return;
+      const blob = new Blob([currentStlBuffer], { type: 'application/octet-stream' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = (selectedFile ? selectedFile.name.replace(/\.gcode$/i, '') : 'output') + '.stl';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // -------------------------------------------------------- UI helpers
+    function setProgress(label, pct, detail) {
+      progressLbl.textContent = label;
+      progressPct.textContent = `${pct}%`;
+      progressBar.style.width = `${pct}%`;
+      if (detail) progressDet.textContent = detail;
+    }
+
+    function showStats({ pointCount, triCount, timeMs }) {
+      statPoints.textContent = pointCount.toLocaleString();
+      statTris.textContent   = triCount.toLocaleString();
+      statTime.textContent   = `${(timeMs / 1000).toFixed(1)}s`;
+      statsSec.classList.remove('hidden');
+      statsSec.classList.add('flex');
+    }
+
+    function showError(msg) {
+      errorToast.textContent = msg;
+      errorToast.classList.remove('hidden');
+      setTimeout(() => errorToast.classList.add('hidden'), 6000);
+    }
+
+    function hideError() {
+      errorToast.classList.add('hidden');
+    }
+  </script>
+</body>
+</html>
