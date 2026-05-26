@@ -8,6 +8,14 @@ Continuing the work from [Josef Prusa's original idea](https://twitter.com/josef
 
 ![render2](https://github.com/AndrewSink/G-code-to-mesh-experiment/assets/46334898/2f4d40d0-af93-4270-85cc-c1190e4544be)
 
+## Web Interface
+
+A browser-based version is available in the [`web/`](web/) folder. Drop in a `.gcode` file, adjust settings, and export an `.stl` — no install required. Serve the folder over HTTP to use it:
+
+```
+python -m http.server 8080
+```
+
 ## Dependencies
 pip install numpy scikit-image numpy-stl trimesh
 
