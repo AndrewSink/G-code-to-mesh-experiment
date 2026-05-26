@@ -204,7 +204,7 @@
     scene.background = new THREE.Color(0x0a0f1a);
 
     const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 10000);
-    camera.position.set(0, 50, 200);
+    camera.position.set(0, 80, 250); // slightly elevated, looking at a Z-up model
 
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
@@ -257,8 +257,8 @@
       const dist = maxDim / (2 * Math.tan(fov / 2)) * 1.5;
       controls.target.copy(center);
       camera.position.copy(center);
-      camera.position.z += dist;
-      camera.position.y += maxDim * 0.3;
+      camera.position.z += dist;          // pull back along world Z
+      camera.position.y += maxDim * 0.4;  // elevated (model stands along Y after rotation)
       camera.near = maxDim * 0.0005;
       camera.far  = maxDim * 50;
       camera.updateProjectionMatrix();
@@ -412,6 +412,11 @@
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(vertsBuffer, 3));
       geometry.setIndex(new THREE.BufferAttribute(facesBuffer, 1));
+
+      // G-code uses Z-up (XY = print bed, Z = layer height).
+      // three.js is Y-up, so rotate -90 deg around X to map G-code Z -> world Y.
+      // Applying to the geometry (not the mesh) keeps bounding box / normals correct.
+      geometry.applyMatrix4(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
       geometry.computeVertexNormals();
 
       const material = new THREE.MeshStandardMaterial({
